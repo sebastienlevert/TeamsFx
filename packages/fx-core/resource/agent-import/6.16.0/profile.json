@@ -1,0 +1,9 @@
+{
+  "profileVersion": 1,
+  "templateId": "declarative-agent-basic",
+  "templateVersion": "6.16.0",
+  "archiveEncoding": "base64",
+  "archiveSha256": "1407156c638c97e6e0c37785f3280779f748a74edf5a4c9c329f5cec9791e7d9",
+  "contentDigest": "sha256:f32852fdf0fad7ead0d77443918171d627b2660ff8e670affbb9b4c7ee86f9a2",
+  "source": "templates/vsc/common/declarative-agent-basic"
+}

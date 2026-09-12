@@ -12,6 +12,7 @@
 import path from "path";
 import fs from "fs-extra";
 import stripBom from "strip-bom";
+import { randomUUID } from "crypto";
 
 const placeholderRegex = /\${{ *[a-zA-Z_][a-zA-Z0-9_]* *}}/g;
 const functionRegex = /\$\[ *[a-zA-Z][a-zA-Z]*\([^\]]*\) *\]/g;
@@ -197,7 +198,8 @@ async function readFileContent(
   filePath: string,
   envs: { [key in string]: string } | undefined,
   fromPath: string,
-  logger?: { error: (message: string) => void }
+  logger?: { error: (message: string) => void },
+  raw = false
 ): Promise<string> {
   const manifestDirectory = path.resolve(path.dirname(fromPath));
   const absolutePath = path.resolve(manifestDirectory, filePath);
@@ -255,6 +257,11 @@ async function readFileContent(
   }
 
   try {
+    if (raw) {
+      return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+        await fs.readFile(realFilePath)
+      );
+    }
     let fileContent = await fs.readFile(realFilePath, "utf8");
     fileContent = stripBom(fileContent);
     let processedFileContent = expandEnvironmentVariable(fileContent, envs);
@@ -264,6 +271,14 @@ async function readFileContent(
     logger?.error(`Failed to read file '${safeFileReference}': ${(error as Error)?.toString()}`);
     throw new ReadFileError(safeFileReference, error);
   }
+}
+
+/** A whole-field, static file reference, suitable for offline dependency discovery. */
+export function getStaticManifestFileReference(
+  value: string
+): { path: string; raw: boolean } | undefined {
+  const match = /^\$\[\s*file\(\s*'([^']+)'\s*(,\s*'raw'\s*)?\)\s*\]$/.exec(value);
+  return match ? { path: match[1], raw: match[2] !== undefined } : undefined;
 }
 
 export async function processManifestFunction(
@@ -280,6 +295,10 @@ export async function processManifestFunction(
 
   // file()
   const trimmedParameter = content.slice(5, -1).trim();
+  const rawParameter = /^'([^']+)'\s*,\s*'raw'$/.exec(trimmedParameter);
+  if (rawParameter) {
+    return readFileContent(rawParameter[1].replace(/\\/g, path.sep), envs, fromPath, logger, true);
+  }
   if (trimmedParameter[0] === "'" && trimmedParameter[trimmedParameter.length - 1] === "'") {
     // static string as function parameter
     return readFileContent(
@@ -308,12 +327,30 @@ export async function expandFileFunctionMacros(
   isJson: boolean,
   options: Pick<ResolveManifestOptions, "envs" | "fromPath" | "logger">
 ): Promise<ResolveManifestResult> {
+  const expanded = await expandManifestFiles(content, isJson, options);
+  return {
+    content: restoreLiteralFiles(expanded.content, expanded.literals),
+    functionCount: expanded.functionCount,
+  };
+}
+
+function restoreLiteralFiles(content: string, literals: Map<string, string>): string {
+  return content.replace(/__ATK_RAW_[a-f0-9-]+__/g, (token) => literals.get(token) ?? token);
+}
+
+async function expandManifestFiles(
+  content: string,
+  isJson: boolean,
+  options: Pick<ResolveManifestOptions, "envs" | "fromPath" | "logger">
+): Promise<ResolveManifestResult & { literals: Map<string, string> }> {
+  const literals = new Map<string, string>();
   const matches = content.match(functionRegex);
   if (!matches) {
-    return { content, functionCount: 0 }; // no function
+    return { content, functionCount: 0, literals }; // no function
   }
   let functionCount = 0;
   for (const placeholder of matches) {
+    const raw = getStaticManifestFileReference(placeholder)?.raw === true;
     let value = await processManifestFunction(
       placeholder.slice(2, -1).trim(),
       options.envs,
@@ -323,12 +360,19 @@ export async function expandFileFunctionMacros(
     if (isJson && value) {
       value = JSON.stringify(value).slice(1, -1);
     }
-    if (value) {
+    if (value || raw) {
       functionCount += 1;
-      content = content.replace(placeholder, value);
+      if (raw) {
+        // Mask literal file contents until environment resolution is finished.
+        const token = `__ATK_RAW_${randomUUID()}__`;
+        literals.set(token, value);
+        content = content.replace(placeholder, () => token);
+      } else {
+        content = content.replace(placeholder, () => value);
+      }
     }
   }
-  return { content, functionCount };
+  return { content, functionCount, literals };
 }
 
 // Fully resolve a manifest template string: expand `$[file()]` calls (except for
@@ -342,10 +386,12 @@ export async function resolveManifest(
 ): Promise<ResolveManifestResult> {
   let value = content;
   let functionCount = 0;
+  let literals = new Map<string, string>();
   if (options.manifestType !== ManifestType.ApiSpec) {
-    const expanded = await expandFileFunctionMacros(content, true, options);
+    const expanded = await expandManifestFiles(content, true, options);
     value = expanded.content;
     functionCount = expanded.functionCount;
+    literals = expanded.literals;
     value = expandEnvironmentVariable(value, options.envs);
   } else {
     value = expandEnvironmentVariable(value, options.envs);
@@ -356,5 +402,5 @@ export async function resolveManifest(
     throw new MissingEnvironmentVariablesError(notExpandedVars.join(","), options.fromPath);
   }
 
-  return { content: value, functionCount };
+  return { content: restoreLiteralFiles(value, literals), functionCount };
 }

@@ -40,6 +40,7 @@ import { addStartAndEndTelemetry } from "../middleware/addStartAndEndTelemetry";
 import { updateVersionForTeamsAppYamlFile } from "../util/utils";
 import { WrapDriverContext } from "../util/wrapUtil";
 import { Constants } from "./constants";
+import { appendImportedPackageFiles } from "../../agentMigration/package";
 import { CreateAppPackageArgs } from "./interfaces/CreateAppPackageArgs";
 import { copilotGptManifestUtils } from "./utils/CopilotGptManifestUtils";
 import { manifestUtils } from "./utils/ManifestUtils";
@@ -512,6 +513,18 @@ export class CreateAppPackageDriver implements StepDriver {
         )
       );
     }
+
+    const packageEnvs: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) packageEnvs[key] = value;
+    }
+    const importedClosure = await appendImportedPackageFiles(
+      zip,
+      context.projectPath,
+      appDirectory,
+      packageEnvs
+    );
+    if (importedClosure.isErr()) return err(importedClosure.error);
 
     const stagedZipFileName = this.getStagedOutputPath(zipFileName);
     const maxPackageSize = 10 * 1024 * 1024;

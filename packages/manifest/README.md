@@ -90,6 +90,36 @@ Validate manifest against schema:
 const failures = await AppManifestUtils.validateAgainstSchema(manifest);
 ```
 
+For an offline operation, request only a schema bundled in this installed
+package and pass it explicitly to validation. An unavailable version fails
+instead of falling back to a network request or a CWD-relative schema:
+
+```typescript
+const schema = await AppManifestUtils.fetchSchema(manifest.$schema, { localOnly: true });
+const failures = await AppManifestUtils.validateAgainstSchema(manifest, schema);
+```
+
+### Literal instruction files
+
+`resolveManifest` supports an opt-in literal file include:
+
+```json
+{
+  "instructions": "$[file('instructions.txt', 'raw')]"
+}
+```
+
+The `raw` mode preserves the exact UTF-8 file text, including a leading BOM,
+CRLF, and literal `${{ENV}}` or `$[file(...)]` prose. It does not evaluate
+templates inside that text. Paths must resolve to `.txt` or `.md` files within
+the owning manifest's directory; symlink escapes are rejected. Existing
+one-argument `file()` includes retain their environment-expansion, BOM-removal,
+and newline-normalization behavior.
+
+Pass an explicit `envs` map to `resolveManifest` when resolution must not inherit
+the host environment. `getStaticManifestFileReference` recognizes whole-field
+static file references for dependency discovery without reading any files.
+
 Read and write manifest:
 
 ```typescript

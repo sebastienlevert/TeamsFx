@@ -11,3 +11,4 @@ export * from "neverthrow";
 export * from "@microsoft/app-manifest";
 export * from "./cli";
 export * from "./generator";
+export * from "./agentMigration";

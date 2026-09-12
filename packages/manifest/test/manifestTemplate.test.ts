@@ -40,6 +40,47 @@ describe("manifestTemplate", () => {
   }
 
   describe("expandEnvironmentVariable", () => {
+    it("IMP-02: raw file includes preserve exact text without interpreting literal templates", async () => {
+      const text = "\uFEFFcaf\u00e9\r\n${{LITERAL}} $[file('absent.txt')] $& $$ $` $'";
+      writeFixture("raw.txt", text);
+      const out = await resolveManifest(
+        `{"instructions":"$[file('raw.txt', 'raw')]","id":"\${{ID}}"}`,
+        {
+          fromPath,
+          envs: { ID: "bound", LITERAL: "must not replace" },
+          manifestType: ManifestType.DeclarativeCopilotManifest,
+        }
+      );
+      assert.deepStrictEqual(JSON.parse(out.content), { instructions: text, id: "bound" });
+      assert.equal(out.functionCount, 1);
+    });
+
+    it("IMP-02: a raw include changes when its file changes, including empty content", async () => {
+      const content = `{"instructions":"$[file('raw.txt', 'raw')]"}`;
+      for (const text of ["first", "second\r\nline", ""]) {
+        writeFixture("raw.txt", text);
+        const out = await resolveManifest(content, {
+          fromPath,
+          envs: {},
+          manifestType: ManifestType.DeclarativeCopilotManifest,
+        });
+        assert.strictEqual(JSON.parse(out.content).instructions, text);
+      }
+    });
+
+    it("IMP-08: raw includes retain the existing path-containment restriction", async () => {
+      try {
+        await resolveManifest(`{"instructions":"$[file('../outside.txt', 'raw')]"}`, {
+          fromPath,
+          envs: {},
+          manifestType: ManifestType.DeclarativeCopilotManifest,
+        });
+        assert.fail("must reject traversal");
+      } catch (error) {
+        assert.instanceOf(error, FileReferenceOutsideManifestDirectoryError);
+      }
+    });
+
     it("replaces a defined variable", () => {
       assert.strictEqual(expandEnvironmentVariable("a ${{FOO}} b", { FOO: "x" }), "a x b");
     });

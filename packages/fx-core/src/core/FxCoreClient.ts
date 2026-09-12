@@ -2,6 +2,9 @@
 // Licensed under the MIT license.
 
 import {
+  AgentEditRequest,
+  AgentImportRequest,
+  AgentMigrationReport,
   FxError,
   Inputs,
   InputsWithProjectPath,
@@ -98,6 +101,14 @@ export type FxCoreAddAuthActionInputs = AddAuthActionInputs &
  * are successful domain outcomes from validate(), with valid set to false.
  */
 export interface IFxCoreClient {
+  importAgentPackage(
+    request: AgentImportRequest,
+    options?: FxCoreExecutionOptions
+  ): Promise<Result<AgentMigrationReport, FxError>>;
+  applyAgentEdits(
+    request: AgentEditRequest,
+    options?: FxCoreExecutionOptions
+  ): Promise<Result<AgentMigrationReport, FxError>>;
   addPlugin(
     inputs: FxCoreAddPluginInputs,
     options?: FxCoreExecutionOptions
@@ -142,6 +153,20 @@ export class FxCoreClient implements IFxCoreClient {
 
   public constructor(private readonly tools: Tools) {
     this.core = new FxCore(tools);
+  }
+
+  public async importAgentPackage(
+    request: AgentImportRequest,
+    options?: FxCoreExecutionOptions
+  ): Promise<Result<AgentMigrationReport, FxError>> {
+    return this.core.importAgentPackage(request, options);
+  }
+
+  public async applyAgentEdits(
+    request: AgentEditRequest,
+    options?: FxCoreExecutionOptions
+  ): Promise<Result<AgentMigrationReport, FxError>> {
+    return this.core.applyAgentEdits(request, options);
   }
 
   public async addPlugin(

@@ -2,6 +2,53 @@
 
 The TeamsFx Core package implements shared capabilities for Microsoft 365 Agents Toolkit IDE Extensions and the CLI through API contracts defined in the [api](/packages/api).
 
+## Local agent package import and edits
+
+The supported `FxCoreClient` / `IFxCoreClient` boundary exposes two local,
+noninteractive operations:
+
+```typescript
+const imported = await client.importAgentPackage({
+  sourcePath: "exports/agent.zip",
+  outputPath: "projects/imported-agent",
+  dryRun: true,
+});
+
+const edited = await client.applyAgentEdits({
+  projectPath: "projects/imported-agent",
+  changesFile: "approved/changes.json",
+  expectedDigest: reviewedProjectDigest,
+});
+```
+
+Both return `Result<AgentMigrationReport, FxError>` and accept an optional second
+argument `{ signal: AbortSignal }`. Requests, the edit-document schema, and report
+types are exported from `@microsoft/teamsfx-api`. ZIP and extracted-folder imports
+use the bundled native template and create a **new** project; they never overwrite
+an existing directory or take over the source deployment identity.
+
+Edits preserve the current project's deployment/environment identity and apply
+only the approved version-1 JSON operations. A dry run changes no project files;
+a no-op does not rewrite them. Import and edits do not authenticate, provision,
+share, publish, run source code, fetch remote source references, or call AI.
+Local structural validity is reported separately from cloud readiness, which is
+not evaluated.
+
+See the [import contract](../../docs/03-specs/operations/scaffolding/import-agent-package.md),
+[edit contract](../../docs/03-specs/operations/scaffolding/apply-agent-edits.md),
+and [workflow](../../docs/03-specs/scenarios/agent-package/import-and-edit.md) for
+supported dialects, safety limits, exact collection semantics, and transaction
+recovery. Imported instructions use the shared manifest resolver's opt-in
+`$[file('instructions.txt', 'raw')]` syntax so literal template-like prose remains
+literal when packaged.
+
+The migration profile is independently pinned at
+`resource/agent-import/6.16.0/`; it does not read or modify normal creation's
+template archive or version configuration. Maintainers can verify the frozen
+profile with `pnpm run bundle:agent-import-profile` after building the matching
+native template release and core. A content change requires a new profile
+version; the command refuses to overwrite an existing different profile.
+
 ## Data Collection.
 
 The software may collect information about you and your use of the software and send it to Microsoft. Microsoft may use this information to provide services and improve our products and services. You may turn off the telemetry as described in the repository. There are also some features in the software that may enable you and Microsoft to collect data from users of your applications. If you use these features, you must comply with applicable law, including providing appropriate notices to users of your applications together with a copy of Microsoft's privacy statement. Our privacy statement is located at https://go.microsoft.com/fwlink/?LinkID=824704. You can learn more about data collection and use in the help documentation and our privacy statement. Your use of the software operates as your consent to these practices.

@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Approved local agent edits",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "agentId", "operations"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "agentId": { "type": "string", "minLength": 1 },
+    "operations": {
+      "type": "array",
+      "maxItems": 2048,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "sourceFile"],
+            "properties": {
+              "kind": { "const": "replaceInstructions" },
+              "sourceFile": { "type": "string", "minLength": 1 }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": { "const": "setAppMetadata" },
+              "value": {
+                "type": "object", "additionalProperties": false,
+                "properties": {
+                  "name": {}, "description": {}, "developer": {}, "version": {},
+                  "accentColor": {}, "validDomains": {}
+                }
+              }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": { "const": "setAgentMetadata" },
+              "value": {
+                "type": "object", "additionalProperties": false,
+                "properties": { "name": {}, "description": {}, "disclaimer": {}, "sensitivity_label": {} }
+              }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": { "const": "replaceConversationStarters" },
+              "value": { "type": "array", "items": { "type": "object" } }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": { "const": "upsertCapability" },
+              "value": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string", "minLength": 1 } } }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "name"],
+            "properties": {
+              "kind": { "const": "removeCapability" },
+              "name": { "type": "string", "minLength": 1 }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": { "const": "setBehaviorOverrides" },
+              "value": { "type": "object" }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": { "const": "setSchemaVersion" },
+              "value": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+$" }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "icon", "sourceFile"],
+            "properties": {
+              "kind": { "const": "replaceIcon" },
+              "icon": { "enum": ["color", "outline"] },
+              "sourceFile": { "type": "string", "minLength": 1 }
+            }
+          },
+          {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "files"],
+            "properties": {
+              "kind": { "const": "attachEmbeddedKnowledge" },
+              "files": {
+                "type": "array", "minItems": 1, "maxItems": 10,
+                "items": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["sourceFile", "targetPath"],
+                  "properties": {
+                    "sourceFile": { "type": "string", "minLength": 1 },
+                    "targetPath": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

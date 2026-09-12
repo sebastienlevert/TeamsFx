@@ -11,6 +11,9 @@ import {
   Utils,
 } from "@microsoft/m365-spec-parser";
 import {
+  AgentEditRequest,
+  AgentImportRequest,
+  AgentMigrationReport,
   ApiOperation,
   AppPackageFolderName,
   AuthCredentialSource,
@@ -42,6 +45,8 @@ import {
   err,
   ok,
 } from "@microsoft/teamsfx-api";
+import { importAgentPackage } from "../component/agentMigration/import";
+import { applyAgentEdits } from "../component/agentMigration/edit";
 import AdmZip from "adm-zip";
 import { DotenvParseOutput } from "dotenv";
 import fs from "fs-extra";
@@ -231,6 +236,22 @@ export class FxCore extends FxCoreOpenPluginPart {
   constructor(tools: Tools) {
     super();
     setTools(tools);
+  }
+
+  /** Offline package import; intentionally does not run question or lifecycle middleware. */
+  public async importAgentPackage(
+    request: AgentImportRequest,
+    options?: { signal?: AbortSignal }
+  ): Promise<Result<AgentMigrationReport, FxError>> {
+    return importAgentPackage(request, createContext(), options?.signal);
+  }
+
+  /** Apply an approved local edit document without changing deployment identity. */
+  public async applyAgentEdits(
+    request: AgentEditRequest,
+    options?: { signal?: AbortSignal }
+  ): Promise<Result<AgentMigrationReport, FxError>> {
+    return applyAgentEdits(request, options?.signal);
   }
 
   private getAbortSignal(inputs: Inputs): AbortSignal | undefined {

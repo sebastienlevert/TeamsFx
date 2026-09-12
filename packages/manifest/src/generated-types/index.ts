@@ -456,14 +456,21 @@ export class AppManifestUtils {
     return candidates;
   }
 
-  static async fetchSchema(schemaUrl: string): Promise<JSONSchemaType<AppManifest>> {
+  static async fetchSchema(
+    schemaUrl: string,
+    options?: { localOnly?: boolean }
+  ): Promise<JSONSchemaType<AppManifest>> {
     const suffix = this.getLocalSchemaSuffix(schemaUrl);
     if (suffix) {
-      for (const schemaFile of this.getLocalSchemaCandidates(suffix)) {
+      const candidates = this.getLocalSchemaCandidates(suffix);
+      for (const schemaFile of options?.localOnly ? candidates.slice(0, 1) : candidates) {
         if (await fs.pathExists(schemaFile)) {
           const raw = await fs.readFile(schemaFile, "utf8");
           const cleanedText = raw.replace(/\\a/g, "\\u0007").replace(/\\v/g, "\\u000b");
           return JSON.parse(cleanedText) as JSONSchemaType<AppManifest>;
+        }
+        if (options?.localOnly) {
+          throw new Error("The requested manifest schema is not bundled with this package.");
         }
       }
     }

@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Native agent migration report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reportVersion", "projectPath", "operationMode", "dryRun", "changed", "source",
+    "projectDigest", "identity", "template", "transformations", "files", "referenceMap",
+    "diagnostics", "configuration", "recoveryRequired"
+  ],
+  "properties": {
+    "reportVersion": { "const": 1 },
+    "projectPath": { "type": "string" },
+    "operationMode": { "enum": ["imported", "edited", "no-op", "dry-run"] },
+    "dryRun": { "type": "boolean" },
+    "changed": { "type": "boolean" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "digest"],
+      "properties": {
+        "kind": { "enum": ["zip", "directory", "project"] },
+        "digest": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "projectDigest": { "$ref": "#/definitions/digest" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "provisionedByOperation", "agentId", "projectId", "appId"],
+      "properties": {
+        "policy": { "enum": ["new", "preserved"] },
+        "provisionedByOperation": { "const": false },
+        "agentId": { "type": "string" },
+        "projectId": { "type": ["string", "null"] },
+        "appId": { "type": "string" },
+        "sourceAppId": { "type": "string" },
+        "sourceAgentId": { "type": "string" }
+      }
+    },
+    "template": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "digest"],
+          "properties": {
+            "id": { "type": "string" },
+            "version": { "type": "string" },
+            "digest": { "$ref": "#/definitions/digest" }
+          }
+        }
+      ]
+    },
+    "transformations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ruleId", "path", "description"],
+        "properties": {
+          "ruleId": { "type": "string" },
+          "path": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "action"],
+        "properties": {
+          "path": { "type": "string" },
+          "action": { "enum": ["created", "modified", "preserved", "skipped", "candidate"] },
+          "sourcePath": { "type": "string" },
+          "digest": { "$ref": "#/definitions/digest" }
+        }
+      }
+    },
+    "referenceMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "severity", "message"],
+        "properties": {
+          "code": { "type": "string" },
+          "severity": { "enum": ["info", "warning"] },
+          "message": { "type": "string" },
+          "path": { "type": "string" },
+          "pointer": { "type": "string" },
+          "ruleId": { "type": "string" },
+          "remediation": { "type": "string" }
+        }
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structurallyValid", "readyToProvision", "readyToPublish", "requirements"],
+      "properties": {
+        "structurallyValid": { "const": true },
+        "readyToProvision": { "const": "not-evaluated" },
+        "readyToPublish": { "const": "not-evaluated" },
+        "requirements": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "recoveryRequired": { "const": false }
+  },
+  "definitions": {
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}
