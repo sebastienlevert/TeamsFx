@@ -68,6 +68,27 @@ This will run "pnpm install && npm run build" to link packages in monorepo local
 
 **_NOTE:_** When run E2E tests it may pop up windows to ask you to login your Azure account or M365 account, please login your accout to continue the test.
 
+### Local agent import/edit acceptance tests
+
+After the upstream API/core packages and their bundled assets are built, run from
+`packages\cli`:
+
+```powershell
+pnpm run build
+pnpm exec vitest run tests\unit\commands\agentPackage.tests.ts tests\unit\commands\agentPackage.process.tests.ts --config vitest.config.ts --maxWorkers=2
+```
+
+The [local import/edit scenario](../../docs/03-specs/scenarios/agent-package/import-and-edit.md)
+owns these AC-linked surface tests. The command harness uses the public core client,
+real package files, and the native template. The process suite launches `cli.js` with
+closed stdin and requires the compiled `lib` output. Its fault seams reject network,
+external-process attempts, and CWD changes; they do not replace the importer, editor,
+or generator. Relative sources and default output paths are tested from a separate
+Unicode caller directory, including the `appPackage` parent-basename convention.
+No tenant credentials are needed. Cooperative SIGINT is emitted after listener
+registration so cancellation is deterministic on Windows as well as Unix.
+Fixtures are created beneath this package's test directory and cleaned after each test.
+
 ## Coding Style
 ---
 

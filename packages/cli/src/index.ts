@@ -6,6 +6,7 @@
 import fs from "fs-extra";
 import * as path from "path";
 import * as constants from "./constants";
+import { isLocalAgentInvocation } from "./commands/localAgent";
 import cliTelemetry from "./telemetry/cliTelemetry";
 import { TelemetryProperty } from "./telemetry/cliTelemetryEvents";
 
@@ -28,13 +29,16 @@ export async function start(): Promise<void> {
   const { logger } = require("./commonlib/logger") as typeof import("./commonlib/logger");
   const { start: startNewUX } = require("./commands/index") as typeof import("./commands/index");
 
-  initTelemetryReporter();
+  const localAgent = isLocalAgentInvocation(process.argv.slice(2));
+  if (!localAgent) initTelemetryReporter();
   const binName = process.env.TEAMSFX_CLI_BIN_NAME as string;
-  if (binName === "teamsapp") {
+  if (binName === "teamsapp" && !localAgent) {
     logger.warning(
       `Deprecation Warning: The CLI command "teamsapp" is renamed to "atk". The old command name will be retired soon. Please switch to the new command and update your workflows accordingly.`
     );
   }
-  cliTelemetry.reporter?.addSharedProperty(TelemetryProperty.BinName, binName); // trigger binary name for telemetry
+  if (!localAgent) {
+    cliTelemetry.reporter?.addSharedProperty(TelemetryProperty.BinName, binName); // trigger binary name for telemetry
+  }
   return startNewUX(binName);
 }

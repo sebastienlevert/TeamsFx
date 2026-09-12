@@ -14,6 +14,7 @@ import { exportCommand } from "./export";
 import { importCommand } from "./import";
 import { getCreateCommand } from "./create";
 import { deployCommand } from "./deploy";
+import { editCommand } from "./edit";
 import { entraAppCommand } from "./entraAppUpdate";
 import { envCommand } from "./env";
 import { initCommand } from "./init/init";
@@ -52,8 +53,10 @@ export const rootCommand: CLICommand = {
     accountCommand,
     getCreateCommand(),
     addCommand(),
+    importCommand(),
+    editCommand,
     ...(featureFlagManager.getBooleanValue(FeatureFlags.OpenPluginImportExport)
-      ? [importCommand(), exportCommand()]
+      ? [exportCommand()]
       : []),
     regenerateCommand(),
     provisionCommand,

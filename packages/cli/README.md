@@ -16,6 +16,74 @@ $ atk -h
 > [!NOTE]
 > Please refer to [Microsoft 365 Agents Toolkit CLI Documentation](https://aka.ms/teamsfx-toolkit-cli) for in-depth instructions.
 
+## Import and edit local agent packages
+
+Graduate a local exported declarative-agent ZIP or extracted folder into a new native
+Toolkit project, then apply a separately reviewed JSON edit document:
+
+```powershell
+atk import agent --source ".\exported-agent.zip" --output ".\new-agent" --dry-run --format json -i false
+atk import agent --source ".\exported-agent.zip" --output ".\new-agent" --format json -i false
+atk edit agent --folder ".\new-agent" --changes ".\changes.json" --dry-run --format json -i false
+atk edit agent --folder ".\new-agent" --changes ".\changes.json" --format json -i false
+```
+
+`--output` is the **exact new directory**, not a parent directory. Existing targets
+are rejected. If omitted, the default is `<source-basename>-imported` in the current
+directory; an `appPackage` folder uses its parent basename. `--source`, and the
+edit command's `--folder` and `--changes`, are required.
+
+Both commands are always noninteractive, including when invoked in-process or with
+`-i true`. Missing flags return named errors, never prompts. They use only local files
+and bundled assets: no network, authentication, AI, source-script execution,
+provisioning, or publishing. Startup online checks and telemetry are disabled for
+these two commands. Generated lifecycle files are not executed.
+
+For example, `changes.json` can explicitly replace instructions:
+
+```json
+{
+  "schemaVersion": 1,
+  "agentId": "localAgent",
+  "operations": [
+    {
+      "kind": "replaceInstructions",
+      "sourceFile": "approved-instructions.txt"
+    }
+  ]
+}
+```
+
+Use the logical agent ID from `copilotAgents.declarativeAgents[].id`, not a deployment
+ID. Edit-document asset paths are relative to the JSON file's directory. To prevent
+applying changes to a stale project, pass `--expected-digest` with a previously returned
+`projectDigest` (`sha256:<hex>`). This precondition also applies to dry runs and no-ops.
+
+With `--format json`, stdout contains exactly one envelope:
+`{"success":true,"result":<complete report>}` or
+`{"success":false,"error":{"source":"...","name":"...","message":"..."}}`.
+Progress and human-readable errors use stderr. Without `--format`, the complete
+report is pretty-printed. Diagnostics and configuration requirements are retained;
+local structural validity does **not** establish provisioning or publishing readiness.
+
+| Outcome | Exit code |
+| --- | --- |
+| Import, edit, no-op, or dry run | `0` |
+| Validation, path, stale-digest, or other error | `1` |
+| Ctrl+C cancellation | `130` |
+| `--help` or `--version` | `0` (ordinary help/version text, not a report) |
+
+Import never changes its source package. Edit preserves existing identity and environment
+configuration. Dry runs commit no changes, and no-ops do not rewrite project files.
+Use `atk import agent --help` or `atk edit agent --help` for command options.
+These commands are separate from the existing `import agentplugin` / `import openplugin`
+conversion commands.
+
+See the [import contract](../../docs/03-specs/operations/scaffolding/import-agent-package.md),
+[supported edit operations](../../docs/03-specs/operations/scaffolding/apply-agent-edits.md),
+and [local import/edit scenario](../../docs/03-specs/scenarios/agent-package/import-and-edit.md)
+for the authoritative supported dialect, limits, transactional behavior, and report contract.
+
 ## Feedback
 
 - Ask a question on [Stack Overflow](https://stackoverflow.com/questions/tagged/teams-toolkit)
@@ -31,6 +99,7 @@ The software may collect information about you and your use of the software and 
 ### Telemetry Configuration
 
 Telemetry collection is on by default. To opt out, please add the global option `--telemetry false` for each command to turn it off.
+The local `import agent` and `edit agent` commands never initialize or send telemetry.
 
 ## Code of Conduct
 

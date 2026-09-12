@@ -42,10 +42,18 @@ import {
   UnknownOptionError,
 } from "../error";
 import CliTelemetry from "../telemetry/cliTelemetry";
+import { commands } from "../resource";
 import { TelemetryComponentType, TelemetryProperty } from "../telemetry/cliTelemetryEvents";
 import UI from "../userInteraction";
 import { editDistance, getSystemInputs } from "../utils";
 import { helper } from "./helper";
+import {
+  flushLocalAgentOutput,
+  isLocalAgentCommand,
+  isLocalAgentInvocation,
+  requestsLocalAgentJson,
+  writeLocalAgentOutput,
+} from "./localAgent";
 
 const SENSITIVE_OPTION_NAME = /(secret|password|token|key)/i;
 
@@ -128,17 +136,18 @@ class CLIEngine {
    * entry point of the CLI engine
    */
   async start(rootCmd: CLICommand): Promise<void> {
-    Correlator.setId();
-
-    // Fire-and-forget: fetch latest metadata in background, same as VSC extension activation
-    void getFxCore().fetchOnlineTemplateMetadata();
-
     this.debugLogs = [];
 
     const root = cloneDeep(rootCmd);
 
     // get user args
     const args = this.isBundledElectronApp() ? process.argv.slice(1) : process.argv.slice(2);
+    const localAgent = isLocalAgentInvocation(args);
+    if (!localAgent) {
+      Correlator.setId();
+      // Fire-and-forget: fetch latest metadata in background, same as VSC extension activation
+      void getFxCore().fetchOnlineTemplateMetadata();
+    }
 
     // find command
     const findRes = this.findCommand(rootCmd, args);
@@ -150,22 +159,25 @@ class CLIEngine {
       ...(foundCommand.arguments ?? []),
     ]);
 
-    this.debugLogs.push(`user argument list: ${JSON.stringify(maskedArgs)}`);
-
-    this.debugLogs.push(`matched command: ${colorize(foundCommand.fullName, TextType.Commands)}`);
+    if (!localAgent) {
+      this.debugLogs.push(`user argument list: ${JSON.stringify(maskedArgs)}`);
+      this.debugLogs.push(`matched command: ${colorize(foundCommand.fullName, TextType.Commands)}`);
+    }
 
     const context: CLIContext = {
       command: foundCommand,
       optionValues: {},
       globalOptionValues: {},
       argumentValues: [],
-      telemetryProperties: {
-        [TelemetryProperty.CommandFull]: maskedArgs.join(" "),
-        [TelemetryProperty.CommandName]: foundCommand.fullName,
-        [TelemetryProperty.Component]: TelemetryComponentType,
-        [TelemetryProperty.RunFrom]: tryDetectCICDPlatform(),
-        [TelemetryProperty.BinName]: rootCmd.name,
-      },
+      telemetryProperties: localAgent
+        ? {}
+        : {
+            [TelemetryProperty.CommandFull]: maskedArgs.join(" "),
+            [TelemetryProperty.CommandName]: foundCommand.fullName,
+            [TelemetryProperty.Component]: TelemetryComponentType,
+            [TelemetryProperty.RunFrom]: tryDetectCICDPlatform(),
+            [TelemetryProperty.BinName]: rootCmd.name,
+          },
     };
 
     const executeRes = await this.execute(context, root, remainingArgs);
@@ -173,6 +185,12 @@ class CLIEngine {
       await this.processResult(context, executeRes.error);
     } else {
       await this.processResult(context);
+    }
+    if (localAgent) {
+      if (executeRes.isOk()) process.exitCode = 0;
+      await flushLocalAgentOutput();
+      process.exit(process.exitCode ?? 0);
+      return;
     }
     if (context.command.name !== "preview" || context.globalOptionValues.help) {
       // TODO: consider to remove the hardcode
@@ -190,6 +208,9 @@ class CLIEngine {
     root: CLICommand,
     remainingArgs: string[]
   ): Promise<Result<undefined, FxError>> {
+    if (isLocalAgentCommand(context.command)) {
+      return this.executeLocalAgent(context, root, remainingArgs);
+    }
     // parse args
     const parseRes = this.parseArgs(context, root, remainingArgs);
     // create FxCore for anycase, because Tools will be initialized in FxCore
@@ -339,6 +360,42 @@ class CLIEngine {
     return ok(undefined);
   }
 
+  private async executeLocalAgent(
+    context: CLIContext,
+    root: CLICommand,
+    remainingArgs: string[]
+  ): Promise<Result<undefined, FxError>> {
+    try {
+      const parsed = this.parseArgs(context, root, remainingArgs);
+      if (parsed.isErr()) return err(parsed.error);
+      if (context.globalOptionValues.version === true) {
+        await writeLocalAgentOutput(root.version ?? "1.0.0");
+        return ok(undefined);
+      }
+      if (context.globalOptionValues.help === true) {
+        const helpRoot = cloneDeep(root);
+        for (const option of helpRoot.options ?? []) {
+          if (option.type === "boolean" && option.name === "interactive") {
+            option.default = false;
+            option.description = commands.agentPackage.help.interactive;
+          } else if (option.type === "boolean" && option.name === "telemetry") {
+            option.default = false;
+            option.description = commands.agentPackage.help.telemetry;
+          }
+        }
+        await writeLocalAgentOutput(helper.formatHelp(context.command, helpRoot));
+        return ok(undefined);
+      }
+      const validated = this.validateOptionsAndArguments(context.command);
+      if (validated.isErr()) return err(validated.error);
+      return context.command.handler ? await context.command.handler(context) : ok(undefined);
+    } catch (error) {
+      return err(assembleError(error));
+    } finally {
+      this.debugLogs = [];
+    }
+  }
+
   findCommand(
     model: CLICommand,
     args: string[]
@@ -388,6 +445,13 @@ class CLIEngine {
   ): Result<undefined, UnknownOptionError> {
     let argumentIndex = 0;
     const command = context.command;
+    const localAgent = isLocalAgentCommand(command);
+    if (localAgent) {
+      context.globalOptionValues.interactive = false;
+      context.globalOptionValues.telemetry = false;
+      context.optionValues.nonInteractive = true;
+      if (requestsLocalAgentJson(args)) context.optionValues.format = "json";
+    }
     const options = (rootCommand.options || []).concat(command.options || []);
     const optionName2OptionMap = new Map<string, CLICommandOption>();
     options.forEach((option) => {
@@ -403,7 +467,13 @@ class CLIEngine {
         let key: string;
         let value: string | undefined;
         if (trimmedToken.includes("=")) {
-          [key, value] = trimmedToken.split("=");
+          if (localAgent) {
+            const separator = trimmedToken.indexOf("=");
+            key = trimmedToken.substring(0, separator);
+            value = trimmedToken.substring(separator + 1);
+          } else {
+            [key, value] = trimmedToken.split("=");
+          }
           //process key, value
           remainingArgs.unshift(value);
         } else {
@@ -445,7 +515,13 @@ class CLIEngine {
           } else if (option.type === "string") {
             // string
             const nextToken = remainingArgs[0];
-            if (nextToken) {
+            if (localAgent) {
+              if (!nextToken || (findOptionRes.value === undefined && nextToken.startsWith("-"))) {
+                return err(new MissingRequiredOptionError(command.fullName, option));
+              }
+              option.value = nextToken;
+              remainingArgs.shift();
+            } else if (nextToken) {
               const findNextOptionRes = findOption(nextToken);
               if (findNextOptionRes?.option) {
                 // next token is an option, current option value is undefined
@@ -485,7 +561,7 @@ class CLIEngine {
             isGlobal: !isCommandOption,
           };
           if (option.value !== undefined) inputValues[inputKey] = option.value;
-          this.debugLogs.push(`find option: ${JSON.stringify(logObject)}`);
+          if (!localAgent) this.debugLogs.push(`find option: ${JSON.stringify(logObject)}`);
         } else {
           return err(new UnknownOptionError(command.fullName, token));
         }
@@ -546,6 +622,14 @@ class CLIEngine {
           context.optionValues[this.optionInputKey(argument)] = argument.value;
         }
       }
+    }
+
+    if (localAgent) {
+      context.globalOptionValues.interactive = false;
+      context.globalOptionValues.telemetry = false;
+      context.optionValues.nonInteractive = true;
+      this.debugLogs = [];
+      return ok(undefined);
     }
 
     // set log level
@@ -702,6 +786,27 @@ class CLIEngine {
     return ok(undefined);
   }
   async processResult(context?: CLIContext, fxError?: FxError): Promise<void> {
+    if (context && isLocalAgentCommand(context.command)) {
+      if (fxError) {
+        if (context.optionValues.format === "json") {
+          await writeLocalAgentOutput(
+            JSON.stringify({
+              success: false,
+              error: {
+                source: fxError.source,
+                name: fxError.name,
+                message: fxError.message,
+              },
+            })
+          );
+        }
+        process.stderr.write(
+          maskSecret(`${fxError.source}.${fxError.name}: ${fxError.message}`) + "\n"
+        );
+        process.exitCode = isUserCancelError(fxError) ? 130 : 1;
+      }
+      return;
+    }
     if (context && context.command.telemetry) {
       if (context.optionValues.env) {
         context.telemetryProperties[TelemetryProperty.Env] = getHashedEnv(
